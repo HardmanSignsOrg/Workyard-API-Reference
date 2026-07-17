@@ -554,9 +554,10 @@
     <div class="sf-cam-native" id="sf-cam-native">
       <div class="lens" aria-hidden="true"></div>
       <div class="big">Need HTTPS for rapid shoot</div>
-      <div class="sub">iPhone only allows in-page multi-shot over <code>https://</code>.
-        Restart with the normal launcher, open the printed Phone URL, accept the
-        certificate, then Open camera again. Or tap shutter for one-at-a-time.</div>
+      <div class="sub">iPhone only allows in-page multi-shot over HTTPS.
+        Restart with <code>.\run-workyard.ps1 --serve-https</code>, open the printed
+        <code>https://….ts.net</code> URL on the phone, then Open camera again.
+        Or tap shutter for one photo at a time.</div>
     </div>
     <div class="sf-cam-error" id="sf-cam-error" style="display:none"></div>
   </div>
@@ -681,8 +682,20 @@ function toggleMobileNav() {
 function closeMobileNav() {
   document.body.classList.remove('nav-open');
 }
-function openMobileNav() {
-  document.body.classList.add('nav-open');
+
+function setElStatus(id, msg, isErr) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = 'status-msg' + (isErr ? ' err' : '');
+}
+
+/** Unwrap Workyard single-resource payloads that come back as { data: {...} }. */
+function unwrapRecord(raw) {
+  return (raw && raw.data && !raw.id) ? raw.data : raw;
+}
+
+function fieldLabel(el) {
+  return String(el.title || el.name || '').replace(/\n/g, ' ').trim();
 }
 
 function switchView(view, navId) {
@@ -1002,10 +1015,7 @@ function updatePager() {
 
 function turnPage(d) { state.page = Math.max(1, state.page + d); load(); }
 
-function setStatus(msg, isErr) {
-  const el = document.getElementById('status');
-  el.textContent = msg; el.className = 'status-msg' + (isErr ? ' err' : '');
-}
+function setStatus(msg, isErr) { setElStatus('status', msg, isErr); }
 
 /* ----------------------------------------------------------------- drawer */
 
@@ -1108,10 +1118,7 @@ function dayEndUnix(yyyyMmDd) {
   return Math.floor(new Date(y, m - 1, d, 23, 59, 59).getTime() / 1000);
 }
 
-function setSfStatus(msg, isErr) {
-  const el = document.getElementById('sf-status');
-  el.textContent = msg; el.className = 'status-msg' + (isErr ? ' err' : '');
-}
+function setSfStatus(msg, isErr) { setElStatus('sf-status', msg, isErr); }
 
 function sfFilterVals() {
   const out = {};
@@ -1207,7 +1214,7 @@ function showFormSubmissions(formId, formTitle) {
   renderSfToolbar();
   // hydrate version/structure for compose
   getApi(`smart_forms/${formId}`).then(raw => {
-    const form = (raw && raw.data && !raw.id) ? raw.data : raw;
+    const form = unwrapRecord(raw);
     if (sfState.forms[0] && sfState.forms[0].id === formId) {
       sfState.forms[0].form_version_id = form.form_version_id;
       sfState.forms[0].structure = form.structure;
@@ -1282,8 +1289,7 @@ function sfDetailKey(row) { return `${row._form_id}:${row.id}`; }
 function extractEnrichment(detail) {
   const answers = parseMaybeJson(detail.response_data) || {};
   const structure = parseMaybeJson((detail.form_version || {}).structure) || {};
-  const elements = [];
-  (structure.pages || []).forEach(p => (p.elements || []).forEach(el => elements.push(el)));
+  const elements = sfFormElements(structure);
 
   let jobId = answers.projectName;
   let signsOk = answers.question3;
@@ -1314,8 +1320,6 @@ function extractEnrichment(detail) {
 async function enrichSfRows(refresh) {
   if (sfState.enriching || !sfState.rows.length) return;
   sfState.enriching = true;
-  const f = sfFilterVals();
-  const jobQ = (f.job_id || '').toLowerCase();
 
   try {
     for (const row of sfState.rows) {
@@ -1323,10 +1327,8 @@ async function enrichSfRows(refresh) {
       let detail = sfState.details[key];
       if (!detail || refresh) {
         try {
-          detail = await getApi(`smart_forms/${row._form_id}/submissions/${row.id}`,
-            refresh ? { _refresh: '1' } : {});
-          // getApi returns the JSON body; single-resource endpoints may wrap or not
-          if (detail && detail.data && !detail.id) detail = detail.data;
+          detail = unwrapRecord(await getApi(`smart_forms/${row._form_id}/submissions/${row.id}`,
+            refresh ? { _refresh: '1' } : {}));
           sfState.details[key] = detail;
         } catch (e) {
           row._enriched = true;
@@ -1336,9 +1338,6 @@ async function enrichSfRows(refresh) {
       const en = extractEnrichment(detail);
       Object.assign(row, en, { _enriched: true });
       renderSfTable();
-    }
-    if (jobQ) {
-      // filter already applied in renderSfTable via visibleSfRows
     }
     const visible = visibleSfRows().length;
     setSfStatus(`${visible} submission${visible === 1 ? '' : 's'} (enriched)`, false);
@@ -1403,8 +1402,7 @@ async function openSfSubmission(row) {
   let detail = sfState.details[key];
   try {
     if (!detail) {
-      detail = await getApi(`smart_forms/${row._form_id}/submissions/${row.id}`);
-      if (detail && detail.data && !detail.id) detail = detail.data;
+      detail = unwrapRecord(await getApi(`smart_forms/${row._form_id}/submissions/${row.id}`));
       sfState.details[key] = detail;
       const en = extractEnrichment(detail);
       Object.assign(row, en, { _enriched: true });
@@ -1464,7 +1462,7 @@ function openSubmissionDrawer(detail, formTitle) {
 }
 
 function renderSfField(el, value) {
-  const label = (el.title || el.name || '').replace(/\n/g, ' ').trim();
+  const label = fieldLabel(el);
   let body = '';
   if (el.type === 'boolean') {
     const t = value === true ? 'Yes' : value === false ? 'No' : (value == null ? '—' : String(value));
@@ -1523,10 +1521,7 @@ let sfCompose = {
   sigDrawing: false,
 };
 
-function setComposeStatus(msg, isErr) {
-  const el = document.getElementById('sf-compose-status');
-  el.textContent = msg; el.className = 'status-msg' + (isErr ? ' err' : '');
-}
+function setComposeStatus(msg, isErr) { setElStatus('sf-compose-status', msg, isErr); }
 
 function sfFormElements(structureRaw) {
   const structure = parseMaybeJson(structureRaw) || {};
@@ -1547,8 +1542,7 @@ async function openSfCompose() {
   setComposeStatus('Loading form…', false);
   try {
     if (!form.form_version_id || !form.structure) {
-      const raw = await getApi(`smart_forms/${form.id}`, { _refresh: '1' });
-      const full = (raw && raw.data && !raw.id) ? raw.data : raw;
+      const full = unwrapRecord(await getApi(`smart_forms/${form.id}`, { _refresh: '1' }));
       form = {
         id: full.id,
         title: full.title,
@@ -1618,7 +1612,7 @@ function renderSfComposeFields() {
   sfCompose.elements.forEach(el => {
     const wrap = document.createElement('div');
     wrap.className = 'field';
-    const label = (el.title || el.name || '').replace(/\n/g, ' ').trim();
+    const label = fieldLabel(el);
     const req = el.isRequired ? ' *' : '';
     const lab = document.createElement('label');
     lab.textContent = label + req;
@@ -1953,7 +1947,7 @@ function renderSfCamStrip() {
   if (!photos.length) {
     const tip = sfCam.mode === 'live'
       ? 'Point and tap shutter — keep shooting, then Done.'
-      : 'One photo per tap (open HTTPS URL for rapid multi-shot).';
+      : 'One photo per tap (re-run with --serve-https for rapid multi-shot).';
     strip.innerHTML = `<div class="empty">${tip}</div>`;
     return;
   }
@@ -2007,8 +2001,8 @@ async function startSfCameraStream() {
     audio: false,
     video: {
       facingMode: { ideal: sfCam.facingMode },
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
+      width: { ideal: SF_PHOTO_MAX_EDGE },
+      height: { ideal: Math.round(SF_PHOTO_MAX_EDGE * 9 / 16) },
     },
   };
   try {
@@ -2117,7 +2111,7 @@ function captureSfCameraLive() {
   // Grab frame immediately (sync) so the next tap can fire right away.
   const srcW = video.videoWidth;
   const srcH = video.videoHeight;
-  const maxEdge = 1280;
+  const maxEdge = SF_PHOTO_MAX_EDGE;
   let w = srcW, h = srcH;
   if (w > maxEdge || h > maxEdge) {
     const scale = Math.min(maxEdge / w, maxEdge / h);
@@ -2218,12 +2212,13 @@ async function submitSfCompose() {
   sfCompose.elements.forEach(el => {
     if (!el.isRequired) return;
     const v = sfCompose.values[el.name];
-    if (el.type === 'file' && (!Array.isArray(v) || !v.length)) missing.push(el.title || el.name);
-    else if (el.type === 'boolean' && v !== true && v !== false) missing.push(el.title || el.name);
-    else if (el.type !== 'file' && el.type !== 'boolean' && (v == null || v === '')) missing.push(el.title || el.name);
+    const label = fieldLabel(el);
+    if (el.type === 'file' && (!Array.isArray(v) || !v.length)) missing.push(label);
+    else if (el.type === 'boolean' && v !== true && v !== false) missing.push(label);
+    else if (el.type !== 'file' && el.type !== 'boolean' && (v == null || v === '')) missing.push(label);
   });
   if (missing.length) {
-    setComposeStatus('Required: ' + missing.map(m => String(m).replace(/\n/g, ' ').trim()).join(', '), true);
+    setComposeStatus('Required: ' + missing.join(', '), true);
     return;
   }
 

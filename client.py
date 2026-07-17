@@ -48,8 +48,6 @@ class WorkyardClient:
             'Accept': 'application/json',
         })
 
-    # ------------------------------------------------------------------ core
-
     def request(self, method, path, params=None, json=None):
         """Perform a request against an absolute API path (e.g. '/orgs').
 
@@ -113,8 +111,6 @@ class WorkyardClient:
     def fetch_all(self, resource, **params):
         """Return every record from a paginated list endpoint as a list."""
         return list(self.paginate(resource, **params))
-
-    # ---------------------------------------------------------- convenience
 
     def orgs(self):
         return self.request('GET', '/orgs')

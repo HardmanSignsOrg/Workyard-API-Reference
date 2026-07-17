@@ -1,11 +1,11 @@
-
 """Workyard dashboard — local viewer/manager for the Workyard API.
 
 Run:  python app.py
   -> http://127.0.0.1:5210
-  -> http://<tailscale-ip>:5210  (same port; Tailscale must be up on phone + PC)
+  -> http://<tailscale-ip>:5210  (same port; Tailscale up on phone + PC)
 
-Binds 0.0.0.0 so Tailscale can reach it. Plain HTTP only.
+Binds 0.0.0.0 so Tailscale can reach it. Plain HTTP only
+(use run-workyard.ps1 --serve-https for phone HTTPS / rapid camera).
 """
 
 import csv
@@ -303,8 +303,9 @@ def api_write():
 if __name__ == '__main__':
     host = os.environ.get('WORKYARD_HOST', '0.0.0.0')
     port = int(os.environ.get('WORKYARD_PORT', '5210'))
+    debug = os.environ.get('WORKYARD_DEBUG', '1').strip().lower() not in ('0', 'false', 'no')
     print(f'Workyard Ops listening on http://{host}:{port}')
     print(f'  Local:     http://127.0.0.1:{port}')
     print(f'  Tailscale: http://<this-pc-tailscale-ip>:{port}')
-    # use_reloader=False — multiple debug reloaders were stacking on :5210
-    app.run(host=host, port=port, debug=True, use_reloader=False)
+    # use_reloader=False avoids stacked processes fighting over :5210
+    app.run(host=host, port=port, debug=debug, use_reloader=False)

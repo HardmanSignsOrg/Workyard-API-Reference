@@ -8,7 +8,7 @@
 # No param() block — so --serve-https is accepted as a raw arg.
 $ServeHttps = $false
 foreach ($arg in $args) {
-    if ($arg -in @('--serve-https', '-serve-https', '-ServeHttps', '/serve-https')) {
+    if ($arg -in @('--serve-https', '-ServeHttps')) {
         $ServeHttps = $true
     }
 }

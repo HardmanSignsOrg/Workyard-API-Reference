@@ -27,7 +27,7 @@ WORKYARD_ORG_ID=45770
 
 - Listens on **port 5210**, bound to `0.0.0.0` (plain HTTP).
 - PC browser: `http://127.0.0.1:5210`
-- Overrides: `WORKYARD_HOST`, `WORKYARD_PORT`
+- Overrides: `WORKYARD_HOST`, `WORKYARD_PORT`, `WORKYARD_DEBUG` (`0` to disable Flask debug).
 
 ### Phone access (Tailscale)
 
@@ -53,6 +53,7 @@ Safari/Chrome on iPhone only allow live `getUserMedia` camera in a **secure cont
 
 ## Features
 
+- **Overview / Calendar / API Explorer** — org snapshot, schedule view, OpenAPI endpoint browser.
 - **Browse** — Employees, Projects, Customers, Time Cards, Tasks, Time Off, Tags,
   Geofences, Smart Forms, Cost Codes (per project). Filters + pagination; click a
   row for the full JSON record.
