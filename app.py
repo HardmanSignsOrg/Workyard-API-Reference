@@ -1,7 +1,11 @@
+
 """Workyard dashboard — local viewer/manager for the Workyard API.
 
-Run:  python app.py  ->  http://localhost:5210
-Reads WORKYARD_API_TOKEN / WORKYARD_ORG_ID from .env in this folder.
+Run:  python app.py
+  -> http://127.0.0.1:5210
+  -> http://<tailscale-ip>:5210  (same port; Tailscale must be up on phone + PC)
+
+Binds 0.0.0.0 so Tailscale can reach it. Plain HTTP only.
 """
 
 import csv
@@ -29,7 +33,6 @@ ALLOWED_WRITE_METHODS = {'POST', 'PUT', 'PATCH', 'DELETE'}
 # rate limit. Bypass with ?_refresh=1. Cleared on any successful write.
 CACHE_TTL = 45
 _cache = {}
-
 
 def _cached_get(resource, params, fetch_all=False, refresh=False):
     key = (resource, tuple(sorted(params.items())), fetch_all)
@@ -298,4 +301,10 @@ def api_write():
 
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=5210, debug=True)
+    host = os.environ.get('WORKYARD_HOST', '0.0.0.0')
+    port = int(os.environ.get('WORKYARD_PORT', '5210'))
+    print(f'Workyard Ops listening on http://{host}:{port}')
+    print(f'  Local:     http://127.0.0.1:{port}')
+    print(f'  Tailscale: http://<this-pc-tailscale-ip>:{port}')
+    # use_reloader=False — multiple debug reloaders were stacking on :5210
+    app.run(host=host, port=port, debug=True, use_reloader=False)

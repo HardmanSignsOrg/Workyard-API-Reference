@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#e05d00">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>Workyard Ops — {{ org.get('name', 'Dashboard') }}</title>
 <style>
   :root {
@@ -10,24 +12,37 @@
     --line: #e5e2db; --accent: #e05d00; --accent-soft: #fdf0e5;
     --ok: #2f7d43; --warn: #b06f00; --err: #b3261e;
     --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+    --nav-w: 216px;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
   }
   * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
   body { margin: 0; font: 14px/1.5 ui-sans-serif, system-ui, "Segoe UI", sans-serif;
-         background: var(--bg); color: var(--ink); }
+         background: var(--bg); color: var(--ink);
+         padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0)
+                  env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0); }
   code, pre, .mono, td.num { font-family: var(--mono); }
-  button { font: inherit; cursor: pointer; }
+  button { font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  input, select, textarea { font-size: 16px; } /* avoid iOS zoom on focus */
 
-  .layout { display: flex; min-height: 100vh; }
-  nav { width: 216px; flex: none; background: var(--panel); border-right: 1px solid var(--line);
-        padding: 18px 10px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+  .layout { display: flex; min-height: 100vh; min-height: 100dvh; }
+  .mob-bar { display: none; }
+  .nav-backdrop { display: none; }
+
+  nav { width: var(--nav-w); flex: none; background: var(--panel); border-right: 1px solid var(--line);
+        padding: 18px 10px; position: sticky; top: 0; height: 100vh; height: 100dvh; overflow-y: auto;
+        z-index: 30; }
   .brand { padding: 0 10px 16px; }
   .brand h1 { font: 700 15px/1.2 var(--mono); margin: 0; letter-spacing: 0.04em; }
   .brand h1 .ops { color: var(--accent); }
-  .brand .org { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .brand .org { color: var(--muted); font-size: 12px; margin-top: 2px; word-break: break-word; }
   .navbtn { display: flex; justify-content: space-between; align-items: center; width: 100%;
             text-align: left; padding: 7px 10px; margin: 1px 0; border: 0; border-radius: 6px;
-            background: none; color: var(--ink); }
+            background: none; color: var(--ink); min-height: 40px; }
   .navbtn:hover { background: var(--bg); }
   .navbtn.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
   .navsep { margin: 14px 10px 4px; font-size: 10.5px; text-transform: uppercase;
@@ -36,23 +51,24 @@
   main { flex: 1; padding: 22px 26px; min-width: 0; }
   .toolbar { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px; }
   .toolbar h2 { font-size: 18px; margin: 0 10px 3px 0; letter-spacing: -0.01em; }
-  .field { display: flex; flex-direction: column; gap: 2px; }
+  .field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .field label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
                  color: var(--muted); }
   input, select, textarea {
-    font: inherit; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px;
-    background: var(--panel); color: var(--ink); }
-  .btn { padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px;
-         background: var(--panel); color: var(--ink); }
+    font: inherit; font-size: 16px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--panel); color: var(--ink); max-width: 100%; }
+  .btn { padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px;
+         background: var(--panel); color: var(--ink); min-height: 40px; }
   .btn:hover { border-color: var(--muted); }
   .btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
   .btn.primary:hover { opacity: 0.88; }
   .btn.danger { color: var(--err); border-color: var(--err); }
-  .spacer { flex: 1; }
+  .spacer { flex: 1; min-width: 0; }
 
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
           overflow: hidden; }
-  .tablewrap { overflow-x: auto; max-height: calc(100vh - 220px); }
+  .tablewrap { overflow-x: auto; max-height: calc(100vh - 220px); max-height: calc(100dvh - 220px);
+               -webkit-overflow-scrolling: touch; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
   th, td { text-align: left; padding: 7px 12px; border-bottom: 1px solid var(--line);
            white-space: nowrap; max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
@@ -63,10 +79,10 @@
   td.num { text-align: right; font-size: 12.5px; }
   tbody tr { cursor: pointer; }
   tbody tr:hover { background: var(--accent-soft); }
-  .meta { display: flex; gap: 12px; align-items: center; padding: 9px 12px;
-          color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); }
+  .meta { display: flex; gap: 8px; align-items: center; padding: 9px 12px;
+          color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); flex-wrap: wrap; }
   .meta button { border: 1px solid var(--line); background: var(--panel); border-radius: 6px;
-                 padding: 3px 10px; }
+                 padding: 8px 12px; min-height: 36px; }
   .meta button:disabled { opacity: 0.4; cursor: default; }
   .status-msg { margin-left: auto; }
   .status-msg.err { color: var(--err); }
@@ -79,7 +95,7 @@
   .chip.err { background: #fbe9e7; color: var(--err); }
 
   /* overview */
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
            gap: 10px; margin-bottom: 18px; }
   .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
           padding: 14px 16px; }
@@ -94,14 +110,14 @@
   .worknow .who b { font-weight: 600; }
   .worknow .who .since { font-family: var(--mono); font-size: 12px; color: var(--accent); }
   .pulse { width: 9px; height: 9px; border-radius: 50%; background: var(--accent);
-           animation: pulse 1.6s ease-out infinite; }
+           animation: pulse 1.6s ease-out infinite; flex: none; }
   @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(224,93,0,0.5); }
                      100% { box-shadow: 0 0 0 9px rgba(224,93,0,0); } }
   @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
   .nobody { color: var(--muted); font-size: 13px; padding: 4px 2px; }
   .hoursbars { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
                padding: 14px 16px; }
-  .hbar { display: grid; grid-template-columns: 140px 1fr 64px; gap: 10px; align-items: center;
+  .hbar { display: grid; grid-template-columns: minmax(80px, 140px) 1fr 64px; gap: 10px; align-items: center;
           padding: 5px 0; }
   .hbar .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .hbar .track { background: var(--bg); border-radius: 4px; height: 18px; }
@@ -109,12 +125,13 @@
   .hbar .h { font-family: var(--mono); font-size: 12.5px; text-align: right; }
 
   /* calendar */
-  .cal-legend { display: flex; gap: 6px; align-items: center; margin-right: 8px; }
+  .cal-legend { display: flex; gap: 6px; align-items: center; margin-right: 8px; flex-wrap: wrap; }
+  .cal-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .cal-head { display: grid; grid-template-columns: repeat(7, 1fr);
-              border-bottom: 1px solid var(--line); }
+              border-bottom: 1px solid var(--line); min-width: 560px; }
   .cal-head div { padding: 7px 8px; font-size: 10.5px; text-transform: uppercase;
                   letter-spacing: 0.07em; color: var(--muted); }
-  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); min-width: 560px; }
   .cal-day { min-height: 104px; border-right: 1px solid var(--line);
              border-bottom: 1px solid var(--line); padding: 5px 6px; overflow: hidden; }
   .cal-day:nth-child(7n) { border-right: 0; }
@@ -136,17 +153,19 @@
   .cal-day.expanded { overflow: visible; min-height: 0; height: auto; }
 
   /* drawer */
-  #drawer { position: fixed; top: 0; right: -620px; width: 620px; max-width: 92vw; height: 100vh;
-            background: var(--panel); border-left: 1px solid var(--line);
+  #drawer { position: fixed; top: 0; right: -620px; width: 620px; max-width: 100vw; height: 100vh;
+            height: 100dvh; background: var(--panel); border-left: 1px solid var(--line);
             box-shadow: -12px 0 30px rgba(0,0,0,0.08); transition: right 0.16s ease;
-            display: flex; flex-direction: column; z-index: 20; }
+            display: flex; flex-direction: column; z-index: 35;
+            padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); }
   #drawer.open { right: 0; }
   #drawer header { display: flex; align-items: center; gap: 8px; padding: 13px 16px;
                    border-bottom: 1px solid var(--line); }
-  #drawer header h3 { margin: 0; font-size: 14px; flex: 1; font-family: var(--mono); }
+  #drawer header h3 { margin: 0; font-size: 14px; flex: 1; font-family: var(--mono);
+                      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #drawer .actions { display: flex; gap: 8px; padding: 10px 16px;
                      border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-  #drawer .body { flex: 1; overflow: auto; padding: 0 16px 16px; }
+  #drawer .body { flex: 1; overflow: auto; padding: 0 16px 16px; -webkit-overflow-scrolling: touch; }
   #drawer table { font-size: 12.5px; }
   #drawer td:first-child { color: var(--muted); font-family: var(--mono); font-size: 11.5px;
                            vertical-align: top; width: 190px; }
@@ -155,18 +174,19 @@
   #drawer tbody tr:hover { background: none; }
   #drawer pre { font-size: 12px; background: var(--bg); border: 1px solid var(--line);
                 border-radius: 8px; padding: 12px; overflow: auto; }
-  .close { border: 0; background: none; font-size: 18px; color: var(--muted); }
+  .close { border: 0; background: none; font-size: 22px; color: var(--muted);
+           min-width: 40px; min-height: 40px; }
 
   /* explorer + console */
   .ep { border-bottom: 1px solid var(--line); padding: 10px 14px; }
-  .ep-head { display: flex; gap: 10px; align-items: baseline; cursor: pointer; }
+  .ep-head { display: flex; gap: 10px; align-items: baseline; cursor: pointer; flex-wrap: wrap; }
   .method { font: 700 11px/1 var(--mono); padding: 3px 7px; border-radius: 5px; width: 58px;
             text-align: center; flex: none; }
   .method.GET { background: #e8f3ea; color: var(--ok); }
   .method.POST { background: var(--accent-soft); color: var(--accent); }
   .method.PUT, .method.PATCH { background: #f7efdd; color: var(--warn); }
   .method.DELETE { background: #fbe9e7; color: var(--err); }
-  .ep .path { font-family: var(--mono); font-size: 12.5px; }
+  .ep .path { font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
   .ep .sum { color: var(--muted); font-size: 12px; margin-left: auto; text-align: right;
              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
   .ep-run { display: none; padding: 10px 0 2px; }
@@ -177,7 +197,7 @@
   #console .card { padding: 16px; }
   #console .row { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
   #console textarea { width: 100%; min-height: 140px; resize: vertical; font-family: var(--mono);
-                      font-size: 12.5px; }
+                      font-size: 14px; }
   #console pre { background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
                  padding: 12px; font-size: 12px; overflow: auto; max-height: 340px; }
   .hint { color: var(--muted); font-size: 12px; margin: 4px 0 10px; }
@@ -192,7 +212,7 @@
   .sf-photos a { display: block; width: 96px; height: 96px; border-radius: 6px; overflow: hidden;
                  border: 1px solid var(--line); background: var(--bg); }
   .sf-photos img { width: 100%; height: 100%; object-fit: cover; }
-  .sf-sig img { max-width: 280px; max-height: 120px; border: 1px solid var(--line);
+  .sf-sig img { max-width: 100%; max-height: 120px; border: 1px solid var(--line);
                 border-radius: 6px; background: #fff; }
   .sf-meta { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line);
              color: var(--muted); font-size: 12px; line-height: 1.6; }
@@ -206,6 +226,7 @@
   .sf-compose-grid .field select { width: 100%; max-width: 480px; }
   .sf-compose-grid textarea { min-height: 72px; resize: vertical; }
   .sf-bool { display: flex; gap: 8px; }
+  .sf-bool .btn { flex: 1; max-width: 140px; }
   .sf-bool button.active { background: var(--ink); color: #fff; border-color: var(--ink); }
   .sf-photo-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
   .sf-photo-preview { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -214,14 +235,16 @@
   .sf-photo-preview .shot img { width: 100%; height: 100%; object-fit: cover; }
   .sf-photo-preview .shot button { position: absolute; top: 2px; right: 2px; border: 0;
                                    background: rgba(0,0,0,0.55); color: #fff; border-radius: 4px;
-                                   width: 22px; height: 22px; line-height: 1; padding: 0; }
+                                   width: 28px; height: 28px; line-height: 1; padding: 0; }
   .sf-sig-pad { border: 1px solid var(--line); border-radius: 8px; background: #fff;
                 touch-action: none; cursor: crosshair; display: block; width: 100%; max-width: 480px; height: 140px; }
   .sf-compose-actions { display: flex; gap: 8px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+  .sf-compose-actions .btn.primary { flex: 1; min-width: 160px; }
 
   /* multi-shot camera */
-  #sf-camera { display: none; position: fixed; inset: 0; z-index: 40; background: #0d0e10;
-               color: #f5f4f1; flex-direction: column; }
+  #sf-camera { display: none; position: fixed; inset: 0; z-index: 50; background: #0d0e10;
+               color: #f5f4f1; flex-direction: column;
+               padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); }
   #sf-camera.open { display: flex; }
   .sf-cam-top { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
                 border-bottom: 1px solid rgba(255,255,255,0.08); }
@@ -236,18 +259,46 @@
   .sf-cam-flash.pop { opacity: 0.85; }
   .sf-cam-error { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
                   padding: 24px; text-align: center; color: #b7b3aa; }
+  .sf-cam-native {
+    display: none; position: absolute; inset: 0; flex-direction: column;
+    align-items: center; justify-content: center; gap: 12px; padding: 28px; text-align: center;
+  }
+  .sf-cam-native.show { display: flex; }
+  .sf-cam-native .big { font-size: 18px; font-weight: 600; color: #f5f4f1; }
+  .sf-cam-native .sub { font-size: 13px; color: #b7b3aa; max-width: 300px; line-height: 1.45; }
+  .sf-cam-native .sub code { font-family: var(--mono); font-size: 11px; color: #f5f4f1; }
+  .sf-cam-live-hint {
+    position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+    background: rgba(0,0,0,0.55); color: #f5f4f1; font-size: 12px;
+    padding: 6px 12px; border-radius: 999px; white-space: nowrap; pointer-events: none;
+  }
+  .sf-cam-shutter { touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  .sf-cam-mode-pill {
+    font-size: 11px; padding: 3px 8px; border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.2); color: #b7b3aa;
+  }
+  .sf-cam-mode-pill.live { color: #8ddea3; border-color: rgba(141,222,163,0.45); }
+  .sf-cam-native .lens {
+    width: 120px; height: 120px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.35);
+    display: flex; align-items: center; justify-content: center; margin: 8px 0 4px;
+    background: radial-gradient(circle at 35% 30%, #3a3b40, #141518 70%);
+  }
+  .sf-cam-native .lens::after {
+    content: ''; width: 54px; height: 54px; border-radius: 50%;
+    border: 3px solid rgba(255,255,255,0.55); box-shadow: inset 0 0 0 10px rgba(224,93,0,0.35);
+  }
   .sf-cam-strip { display: flex; gap: 8px; padding: 10px 14px; overflow-x: auto;
                   border-top: 1px solid rgba(255,255,255,0.08); min-height: 84px;
-                  background: rgba(0,0,0,0.55); }
+                  background: rgba(0,0,0,0.55); -webkit-overflow-scrolling: touch; }
   .sf-cam-strip .shot { position: relative; flex: none; width: 64px; height: 64px; border-radius: 6px;
                         overflow: hidden; border: 1px solid rgba(255,255,255,0.18); }
   .sf-cam-strip .shot img { width: 100%; height: 100%; object-fit: cover; }
   .sf-cam-strip .shot button { position: absolute; top: 2px; right: 2px; border: 0;
                                background: rgba(0,0,0,0.6); color: #fff; border-radius: 4px;
-                               width: 20px; height: 20px; line-height: 1; padding: 0; cursor: pointer; }
+                               width: 26px; height: 26px; line-height: 1; padding: 0; cursor: pointer; }
   .sf-cam-strip .empty { color: #6f6a61; font-size: 12px; align-self: center; padding-left: 4px; }
   .sf-cam-controls { display: flex; align-items: center; justify-content: center; gap: 28px;
-                     padding: 16px 20px 22px; background: #0d0e10; }
+                     padding: 16px 20px calc(22px + var(--safe-bottom)); background: #0d0e10; }
   .sf-cam-shutter { width: 74px; height: 74px; border-radius: 50%; border: 3px solid #fff;
                     background: transparent; padding: 5px; cursor: pointer; }
   .sf-cam-shutter span { display: block; width: 100%; height: 100%; border-radius: 50%;
@@ -260,11 +311,92 @@
     .sf-cam-flash { transition: none; }
     .sf-cam-shutter span { transition: none; }
   }
+
+  /* ---------- mobile ---------- */
+  @media (max-width: 860px) {
+    .mob-bar {
+      display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 25;
+      padding: 10px 12px; background: var(--panel); border-bottom: 1px solid var(--line);
+    }
+    .mob-bar .brand-inline { font: 700 14px/1.2 var(--mono); letter-spacing: 0.04em; flex: 1;
+                             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mob-bar .brand-inline .ops { color: var(--accent); }
+    .mob-bar .menu-btn {
+      width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 8px;
+      background: var(--panel); display: inline-flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 5px; padding: 0;
+    }
+    .mob-bar .menu-btn span {
+      display: block; width: 18px; height: 2px; background: var(--ink); border-radius: 1px;
+    }
+
+    .layout { flex-direction: column; }
+    .nav-backdrop {
+      display: none; position: fixed; inset: 0; background: rgba(25,26,28,0.45); z-index: 28;
+    }
+    body.nav-open { overflow: hidden; }
+    body.nav-open .nav-backdrop { display: block; }
+
+    nav {
+      position: fixed; top: 0; left: 0; bottom: 0; width: min(300px, 86vw);
+      height: 100vh; height: 100dvh; transform: translateX(-105%);
+      transition: transform 0.18s ease; border-right: 1px solid var(--line);
+      box-shadow: none; padding-top: calc(18px + var(--safe-top));
+    }
+    body.nav-open nav { transform: translateX(0); box-shadow: 12px 0 30px rgba(0,0,0,0.18); }
+    .navbtn { padding: 10px 12px; font-size: 15px; }
+
+    main { padding: 14px 12px 28px; width: 100%; }
+    .toolbar { gap: 8px; margin-bottom: 12px; }
+    .toolbar h2 { width: 100%; margin: 0 0 4px; font-size: 20px; }
+    .toolbar .field { flex: 1 1 calc(50% - 8px); min-width: 140px; }
+    .toolbar .btn, .toolbar .btn.primary { flex: 1 1 auto; }
+
+    .tablewrap { max-height: none; }
+    th, td { padding: 10px 10px; font-size: 12.5px; max-width: 220px; }
+    .meta { gap: 6px; }
+    .status-msg { width: 100%; margin-left: 0; order: 99; }
+
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .stat .v { font-size: 22px; }
+    .hbar { grid-template-columns: minmax(70px, 100px) 1fr 52px; gap: 8px; }
+
+    .cal-day { min-height: 72px; padding: 4px; }
+    .pill { font-size: 10px; padding: 1px 4px; }
+
+    #drawer { width: 100vw; right: -100vw; border-left: 0; }
+    #drawer.open { right: 0; }
+    #drawer td:first-child { width: 34%; }
+
+    .ep .sum { display: none; }
+    .sf-compose-grid .field input[type="text"],
+    .sf-compose-grid .field input[type="datetime-local"],
+    .sf-compose-grid .field textarea,
+    .sf-compose-grid .field select { max-width: none; }
+    .sf-sig-pad { max-width: none; height: 160px; }
+    .sf-bool .btn { max-width: none; }
+    .sf-compose-actions { position: sticky; bottom: 0; background: var(--bg);
+                          padding: 10px 0 calc(10px + var(--safe-bottom)); margin-top: 12px; }
+    .sf-photo-tools .btn { flex: 1 1 auto; }
+  }
+
+  @media (max-width: 420px) {
+    .stats { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .toolbar .field { flex: 1 1 100%; }
+    .cal-head, .cal-grid { min-width: 480px; }
+  }
 </style>
 </head>
 <body>
+<div class="mob-bar">
+  <button class="menu-btn" type="button" onclick="toggleMobileNav()" aria-label="Open menu">
+    <span></span><span></span><span></span>
+  </button>
+  <div class="brand-inline">WORKYARD<span class="ops">/OPS</span></div>
+</div>
+<div class="nav-backdrop" onclick="closeMobileNav()"></div>
 <div class="layout">
-  <nav>
+  <nav id="app-nav">
     <div class="brand">
       <h1>WORKYARD<span class="ops">/OPS</span></h1>
       <div class="org">{{ org.get('name', '') }} · org {{ org.get('id', '') }}</div>
@@ -313,8 +445,10 @@
         <button class="btn" onclick="renderCalendar(true)">Refresh</button>
       </div>
       <div class="card">
-        <div class="cal-head" id="cal-head"></div>
-        <div class="cal-grid" id="cal-grid"></div>
+        <div class="cal-scroll">
+          <div class="cal-head" id="cal-head"></div>
+          <div class="cal-grid" id="cal-grid"></div>
+        </div>
       </div>
       <div class="hint" id="cal-status" style="margin-top:8px"></div>
     </section>
@@ -350,8 +484,8 @@
       <div id="sf-compose-panel" style="display:none">
         <div class="card">
           <p class="hint"><span class="warn-text">Live submit</span> — posts a real Final Assembly Checklist
-            submission to Workyard. Use Open camera to take as many photos as you need
-            (resized client-side as data URLs).</p>
+            submission to Workyard. Use Open camera to take photos (auto-compressed;
+            Workyard’s API rejects very large photo payloads).</p>
           <div class="sf-compose-grid" id="sf-compose-fields"></div>
           <div class="sf-compose-actions">
             <button class="btn primary" id="sf-compose-submit" onclick="submitSfCompose()">Submit to Workyard</button>
@@ -409,22 +543,32 @@
   <div class="sf-cam-top">
     <button class="btn" type="button" onclick="closeSfCamera()">Done</button>
     <h3>Capture photos</h3>
+    <span class="sf-cam-mode-pill" id="sf-cam-mode-pill">…</span>
     <span class="count" id="sf-cam-count">0</span>
     <button class="btn" type="button" id="sf-cam-flip" onclick="flipSfCamera()" disabled>Flip</button>
   </div>
   <div class="sf-cam-stage">
-    <video id="sf-cam-video" playsinline autoplay muted></video>
+    <video id="sf-cam-video" playsinline webkit-playsinline autoplay muted></video>
     <div class="sf-cam-flash" id="sf-cam-flash"></div>
+    <div class="sf-cam-live-hint" id="sf-cam-live-hint" style="display:none">Tap shutter rapidly — stay in this screen</div>
+    <div class="sf-cam-native" id="sf-cam-native">
+      <div class="lens" aria-hidden="true"></div>
+      <div class="big">Need HTTPS for rapid shoot</div>
+      <div class="sub">iPhone only allows in-page multi-shot over <code>https://</code>.
+        Restart with the normal launcher, open the printed Phone URL, accept the
+        certificate, then Open camera again. Or tap shutter for one-at-a-time.</div>
+    </div>
     <div class="sf-cam-error" id="sf-cam-error" style="display:none"></div>
   </div>
   <div class="sf-cam-strip" id="sf-cam-strip"></div>
   <div class="sf-cam-controls">
     <button class="sf-cam-side" type="button" onclick="closeSfCamera()">Close</button>
-    <button class="sf-cam-shutter" type="button" id="sf-cam-shutter" onclick="captureSfCamera()"
+    <button class="sf-cam-shutter" type="button" id="sf-cam-shutter"
             aria-label="Take photo"><span></span></button>
     <button class="sf-cam-side" type="button" id="sf-cam-library" onclick="sfCameraPickLibrary()">Library</button>
   </div>
   <input type="file" id="sf-cam-file" accept="image/*" multiple hidden>
+  <input type="file" id="sf-cam-capture" accept="image/*" capture="environment" hidden>
 </div>
 
 <script>
@@ -531,6 +675,16 @@ async function writeApi(method, resource, body, confirmMsg) {
   return data;
 }
 
+function toggleMobileNav() {
+  document.body.classList.toggle('nav-open');
+}
+function closeMobileNav() {
+  document.body.classList.remove('nav-open');
+}
+function openMobileNav() {
+  document.body.classList.add('nav-open');
+}
+
 function switchView(view, navId) {
   state.view = view;
   ['overview','calendar','browser','submissions','explorer','console'].forEach(id =>
@@ -538,6 +692,7 @@ function switchView(view, navId) {
   document.querySelectorAll('.navbtn').forEach(b => b.classList.remove('active'));
   document.getElementById(navId).classList.add('active');
   clearInterval(overviewTimer);
+  closeMobileNav();
 }
 
 /* --------------------------------------------------------------- overview */
@@ -1355,8 +1510,11 @@ function renderSfField(el, value) {
 
 /* ------------------------------------------------------- new submission compose */
 
-const SF_PHOTO_MAX_EDGE = 1600;
-const SF_PHOTO_JPEG_QUALITY = 0.78;
+const SF_PHOTO_MAX_EDGE = 1280;
+// Workyard's smart-form POST blows up (~500000) when embedded photo payloads get
+// large. Empirically ~250KB JSON body is the cliff; keep photo binaries smaller.
+const SF_PHOTO_MAX_BYTES = 90 * 1024;          // per photo target
+const SF_PHOTOS_MAX_TOTAL_BYTES = 200 * 1024;  // all photos combined (decoded)
 
 let sfCompose = {
   form: null,
@@ -1535,7 +1693,9 @@ function renderSfComposeFields() {
     } else if (el.type === 'signaturepad') {
       const canvas = document.createElement('canvas');
       canvas.className = 'sf-sig-pad';
-      canvas.width = 480; canvas.height = 140;
+      const padW = Math.min(480, Math.max(280, (document.getElementById('sf-compose-fields').clientWidth || 320) - 8));
+      canvas.width = padW;
+      canvas.height = 160;
       wrap.appendChild(canvas);
       const tools = document.createElement('div');
       tools.className = 'sf-photo-tools';
@@ -1628,26 +1788,48 @@ function bindSfSignature(canvas, fieldName) {
   canvas.addEventListener('touchend', end);
 }
 
-function canvasToResizedDataUrl(sourceCanvas, nameHint) {
+function dataUrlPayloadBytes(dataUrl) {
+  if (!dataUrl || typeof dataUrl !== 'string') return 0;
+  const b64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+  return Math.floor((b64.length * 3) / 4);
+}
+
+function canvasToResizedDataUrl(sourceCanvas, nameHint, maxBytes) {
+  const budget = maxBytes || SF_PHOTO_MAX_BYTES;
   let width = sourceCanvas.width;
   let height = sourceCanvas.height;
-  const max = SF_PHOTO_MAX_EDGE;
-  if (width > max || height > max) {
-    const scale = Math.min(max / width, max / height);
+  let edge = SF_PHOTO_MAX_EDGE;
+  if (width > edge || height > edge) {
+    const scale = Math.min(edge / width, edge / height);
     width = Math.round(width * scale);
     height = Math.round(height * scale);
   }
-  const canvas = document.createElement('canvas');
-  canvas.width = width; canvas.height = height;
-  canvas.getContext('2d').drawImage(sourceCanvas, 0, 0, width, height);
+
+  let quality = 0.7;
+  let content = '';
+  for (let attempt = 0; attempt < 14; attempt++) {
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, width);
+    canvas.height = Math.max(1, height);
+    canvas.getContext('2d').drawImage(sourceCanvas, 0, 0, canvas.width, canvas.height);
+    content = canvas.toDataURL('image/jpeg', quality);
+    if (dataUrlPayloadBytes(content) <= budget) break;
+    if (quality > 0.35) {
+      quality = Math.max(0.32, quality - 0.08);
+    } else {
+      width = Math.max(320, Math.round(width * 0.75));
+      height = Math.max(240, Math.round(height * 0.75));
+      quality = 0.62;
+    }
+  }
   return {
     name: nameHint || `photo-${Date.now()}.jpg`,
     type: 'image/jpeg',
-    content: canvas.toDataURL('image/jpeg', SF_PHOTO_JPEG_QUALITY),
+    content,
   };
 }
 
-function fileToResizedDataUrl(file) {
+function fileToResizedDataUrl(file, maxBytes) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Failed to read ' + file.name));
@@ -1659,12 +1841,59 @@ function fileToResizedDataUrl(file) {
         canvas.width = img.width; canvas.height = img.height;
         canvas.getContext('2d').drawImage(img, 0, 0);
         const base = (file.name || 'photo.jpg').replace(/\.[^.]+$/, '') + '.jpg';
-        resolve(canvasToResizedDataUrl(canvas, base));
+        resolve(canvasToResizedDataUrl(canvas, base, maxBytes));
       };
       img.src = reader.result;
     };
     reader.readAsDataURL(file);
   });
+}
+
+function sfPhotoFieldsTotalBytes() {
+  let total = 0;
+  (sfCompose.elements || []).forEach(el => {
+    if (el.type !== 'file') return;
+    (sfCompose.values[el.name] || []).forEach(f => {
+      total += dataUrlPayloadBytes(f.content);
+    });
+  });
+  return total;
+}
+
+async function recompressSfPhotosUnderBudget() {
+  const fileEls = (sfCompose.elements || []).filter(el => el.type === 'file');
+  if (!fileEls.length) return;
+  let total = sfPhotoFieldsTotalBytes();
+  if (total <= SF_PHOTOS_MAX_TOTAL_BYTES) return;
+
+  setComposeStatus('Compressing photos for Workyard size limit…', false);
+  // Count photos and give each an equal slice of the budget.
+  let count = 0;
+  fileEls.forEach(el => { count += (sfCompose.values[el.name] || []).length; });
+  if (!count) return;
+  const per = Math.max(28 * 1024, Math.floor(SF_PHOTOS_MAX_TOTAL_BYTES / count));
+
+  for (const el of fileEls) {
+    const files = sfCompose.values[el.name] || [];
+    const next = [];
+    for (const f of files) {
+      if (dataUrlPayloadBytes(f.content) <= per) {
+        next.push(f);
+        continue;
+      }
+      const img = await new Promise((resolve, reject) => {
+        const im = new Image();
+        im.onload = () => resolve(im);
+        im.onerror = () => reject(new Error('recompress failed'));
+        im.src = f.content;
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width; canvas.height = img.height;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      next.push(canvasToResizedDataUrl(canvas, f.name || 'photo.jpg', per));
+    }
+    sfCompose.values[el.name] = next;
+  }
 }
 
 async function addSfPhotos(fieldName, fileList) {
@@ -1675,11 +1904,12 @@ async function addSfPhotos(fieldName, fileList) {
   try {
     const converted = [];
     for (const f of incoming) {
-      if (!/^image\//i.test(f.type || '')) continue;
+      if (!/^image\//i.test(f.type || '') && !/\.(jpe?g|png|gif|webp|heic)$/i.test(f.name || '')) continue;
       converted.push(await fileToResizedDataUrl(f));
     }
     sfCompose.values[fieldName] = current.concat(converted);
-    setComposeStatus(`Added ${converted.length} photo${converted.length === 1 ? '' : 's'}.`, false);
+    const kb = Math.round(sfPhotoFieldsTotalBytes() / 1024);
+    setComposeStatus(`Added ${converted.length} photo${converted.length === 1 ? '' : 's'} (~${kb}KB total).`, false);
   } catch (e) {
     setComposeStatus('Photo error: ' + e.message, true);
   }
@@ -1693,7 +1923,27 @@ let sfCam = {
   facingMode: 'environment',
   devices: [],
   busy: false,
+  mode: 'live', // 'live' | 'native'
+  shutterBound: false,
 };
+
+function sfCameraLiveSupported() {
+  return !!(window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+}
+
+function updateSfCamModePill() {
+  const pill = document.getElementById('sf-cam-mode-pill');
+  const hint = document.getElementById('sf-cam-live-hint');
+  if (sfCam.mode === 'live') {
+    pill.textContent = 'rapid';
+    pill.classList.add('live');
+    hint.style.display = '';
+  } else {
+    pill.textContent = '1-shot';
+    pill.classList.remove('live');
+    hint.style.display = 'none';
+  }
+}
 
 function renderSfCamStrip() {
   const strip = document.getElementById('sf-cam-strip');
@@ -1701,7 +1951,10 @@ function renderSfCamStrip() {
   document.getElementById('sf-cam-count').textContent =
     `${photos.length} photo${photos.length === 1 ? '' : 's'}`;
   if (!photos.length) {
-    strip.innerHTML = '<div class="empty">Tap the shutter to take photos — keep shooting, then Done.</div>';
+    const tip = sfCam.mode === 'live'
+      ? 'Point and tap shutter — keep shooting, then Done.'
+      : 'One photo per tap (open HTTPS URL for rapid multi-shot).';
+    strip.innerHTML = `<div class="empty">${tip}</div>`;
     return;
   }
   strip.innerHTML = '';
@@ -1711,7 +1964,8 @@ function renderSfCamStrip() {
     shot.innerHTML = `<img src="${esc(file.content)}" alt="${esc(file.name)}">`;
     const rm = document.createElement('button');
     rm.type = 'button'; rm.textContent = '×'; rm.title = 'Remove';
-    rm.onclick = () => {
+    rm.onclick = (ev) => {
+      ev.stopPropagation();
       sfCompose.values[sfCam.fieldName].splice(i, 1);
       renderSfCamStrip();
     };
@@ -1721,34 +1975,58 @@ function renderSfCamStrip() {
   strip.lastElementChild?.scrollIntoView({ inline: 'end', block: 'nearest', behavior: 'smooth' });
 }
 
+function setSfCameraMode(mode) {
+  sfCam.mode = mode;
+  const video = document.getElementById('sf-cam-video');
+  const native = document.getElementById('sf-cam-native');
+  const errEl = document.getElementById('sf-cam-error');
+  const flip = document.getElementById('sf-cam-flip');
+  errEl.style.display = 'none';
+  if (mode === 'native') {
+    stopSfCameraStream();
+    video.style.display = 'none';
+    native.classList.add('show');
+    flip.disabled = true;
+    document.getElementById('sf-cam-shutter').disabled = false;
+  } else {
+    native.classList.remove('show');
+    video.style.display = '';
+  }
+  updateSfCamModePill();
+}
+
 async function startSfCameraStream() {
   stopSfCameraStream();
   const errEl = document.getElementById('sf-cam-error');
   const video = document.getElementById('sf-cam-video');
   errEl.style.display = 'none';
   video.style.display = '';
+  document.getElementById('sf-cam-native').classList.remove('show');
+  // Keep resolution moderate so shutter stays snappy on phones.
   const constraints = {
     audio: false,
     video: {
       facingMode: { ideal: sfCam.facingMode },
-      width: { ideal: 1920 },
-      height: { ideal: 1080 },
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
     },
   };
   try {
     sfCam.stream = await navigator.mediaDevices.getUserMedia(constraints);
   } catch (e1) {
     try {
-      sfCam.stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+      sfCam.stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: sfCam.facingMode },
+      });
     } catch (e2) {
-      video.style.display = 'none';
-      errEl.style.display = '';
-      errEl.textContent = 'Could not open camera. Check browser permissions, or use Library.';
-      document.getElementById('sf-cam-shutter').disabled = true;
-      throw e2;
+      sfCam.stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
     }
   }
   document.getElementById('sf-cam-shutter').disabled = false;
+  video.setAttribute('playsinline', 'true');
+  video.setAttribute('webkit-playsinline', 'true');
+  video.muted = true;
   video.srcObject = sfCam.stream;
   await video.play().catch(() => {});
   try {
@@ -1769,62 +2047,143 @@ function stopSfCameraStream() {
   video.srcObject = null;
 }
 
+function bindSfCamShutter() {
+  if (sfCam.shutterBound) return;
+  sfCam.shutterBound = true;
+  const btn = document.getElementById('sf-cam-shutter');
+  // Prefer pointer events so iOS doesn't wait for the 300ms click delay / double-fire.
+  btn.addEventListener('pointerup', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    captureSfCamera();
+  });
+  btn.addEventListener('click', (e) => {
+    // Fallback for older browsers without pointer events
+    if (window.PointerEvent) return;
+    e.preventDefault();
+    captureSfCamera();
+  });
+}
+
 async function openSfCamera(fieldName) {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    setComposeStatus('Camera not supported in this browser — use From library.', true);
-    return;
-  }
   sfCam.fieldName = fieldName;
   sfCam.facingMode = 'environment';
+  sfCam.busy = false;
+  bindSfCamShutter();
   document.getElementById('sf-camera').classList.add('open');
   renderSfCamStrip();
-  try {
-    await startSfCameraStream();
-  } catch {
-    // error UI already shown; library still works
+
+  if (sfCameraLiveSupported()) {
+    setSfCameraMode('live');
+    try {
+      await startSfCameraStream();
+      renderSfCamStrip();
+      return;
+    } catch (e) {
+      console.warn('Live camera failed, using native capture', e);
+    }
   }
+
+  setSfCameraMode('native');
+  renderSfCamStrip();
 }
 
 function closeSfCamera() {
   stopSfCameraStream();
   document.getElementById('sf-camera').classList.remove('open');
+  document.getElementById('sf-cam-native').classList.remove('show');
   sfCam.fieldName = null;
   sfCam.busy = false;
+  sfCam.mode = 'live';
   if (document.getElementById('sf-compose-panel').style.display !== 'none') {
     renderSfComposeFields();
   }
 }
 
 async function flipSfCamera() {
-  if (sfCam.devices.length < 2) return;
+  if (sfCam.mode !== 'live' || sfCam.devices.length < 2) return;
   sfCam.facingMode = sfCam.facingMode === 'environment' ? 'user' : 'environment';
   try {
     await startSfCameraStream();
   } catch {
-    // keep prior error state
+    setSfCameraMode('native');
   }
 }
 
-async function captureSfCamera() {
-  if (!sfCam.fieldName || sfCam.busy) return;
+function captureSfCameraLive() {
   const video = document.getElementById('sf-cam-video');
-  if (!video.srcObject || !video.videoWidth) return;
-  sfCam.busy = true;
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const photo = canvasToResizedDataUrl(canvas, `capture-${stamp}.jpg`);
-    sfCompose.values[sfCam.fieldName] = (sfCompose.values[sfCam.fieldName] || []).concat([photo]);
-    const flash = document.getElementById('sf-cam-flash');
-    flash.classList.add('pop');
-    setTimeout(() => flash.classList.remove('pop'), 120);
-    renderSfCamStrip();
-  } finally {
-    sfCam.busy = false;
+  if (!video.srcObject || !video.videoWidth) return false;
+
+  // Grab frame immediately (sync) so the next tap can fire right away.
+  const srcW = video.videoWidth;
+  const srcH = video.videoHeight;
+  const maxEdge = 1280;
+  let w = srcW, h = srcH;
+  if (w > maxEdge || h > maxEdge) {
+    const scale = Math.min(maxEdge / w, maxEdge / h);
+    w = Math.round(w * scale);
+    h = Math.round(h * scale);
   }
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  // Compress off the critical path enough for UX, but keep shutter free:
+  // use a moderate quality first; submit path will recompress under budget.
+  const photo = canvasToResizedDataUrl(canvas, `capture-${stamp}.jpg`, SF_PHOTO_MAX_BYTES);
+  sfCompose.values[sfCam.fieldName] = (sfCompose.values[sfCam.fieldName] || []).concat([photo]);
+
+  const flash = document.getElementById('sf-cam-flash');
+  flash.classList.remove('pop');
+  // force reflow so rapid flashes still animate
+  void flash.offsetWidth;
+  flash.classList.add('pop');
+  setTimeout(() => flash.classList.remove('pop'), 90);
+
+  // Lightweight strip update: append one thumb without full rebuild when possible
+  renderSfCamStrip();
+  if (navigator.vibrate) navigator.vibrate(12);
+  return true;
+}
+
+async function captureSfCamera() {
+  if (!sfCam.fieldName) return;
+
+  if (sfCam.mode === 'live') {
+    // Very short debounce so a single press doesn't double-fire pointer+click,
+    // but rapid taps still work (~8 shots/sec max).
+    if (sfCam.busy) return;
+    sfCam.busy = true;
+    try {
+      if (!captureSfCameraLive()) {
+        setSfCameraMode('native');
+      }
+    } finally {
+      setTimeout(() => { sfCam.busy = false; }, 120);
+    }
+    return;
+  }
+
+  if (sfCam.busy) return;
+  const input = document.getElementById('sf-cam-capture');
+  input.value = '';
+  input.onchange = async () => {
+    if (!sfCam.fieldName || !input.files || !input.files.length) return;
+    sfCam.busy = true;
+    try {
+      await addSfPhotos(sfCam.fieldName, input.files);
+      const flash = document.getElementById('sf-cam-flash');
+      flash.classList.add('pop');
+      setTimeout(() => flash.classList.remove('pop'), 120);
+      renderSfCamStrip();
+    } finally {
+      sfCam.busy = false;
+      input.value = '';
+    }
+  };
+  input.click();
 }
 
 function sfCameraPickLibrary() {
@@ -1868,6 +2227,20 @@ async function submitSfCompose() {
     return;
   }
 
+  try {
+    await recompressSfPhotosUnderBudget();
+  } catch (e) {
+    setComposeStatus('Could not compress photos: ' + e.message, true);
+    return;
+  }
+  const photoKb = Math.round(sfPhotoFieldsTotalBytes() / 1024);
+  if (sfPhotoFieldsTotalBytes() > SF_PHOTOS_MAX_TOTAL_BYTES * 1.15) {
+    setComposeStatus(
+      `Photos still too large for Workyard API (~${photoKb}KB). Remove some and retry.`,
+      true);
+    return;
+  }
+
   const responseData = {};
   sfCompose.elements.forEach(el => {
     responseData[el.name] = sfCompose.values[el.name];
@@ -1879,7 +2252,7 @@ async function submitSfCompose() {
     completed_at: Math.floor(Date.now() / 1000),
   };
 
-  if (!confirm(`Submit “${form.title}” to live Workyard?\nJob/answers will be visible in Workyard immediately.`)) return;
+  if (!confirm(`Submit “${form.title}” to live Workyard?\n~${photoKb}KB of photos will be sent.\nJob/answers will be visible in Workyard immediately.`)) return;
 
   const btn = document.getElementById('sf-compose-submit');
   btn.disabled = true;
@@ -1896,7 +2269,13 @@ async function submitSfCompose() {
     });
     const data = await resp.json();
     if (data.error) {
-      throw new Error(`HTTP ${data.status}: ${typeof data.payload === 'string' ? data.payload : JSON.stringify(data.payload)}`);
+      const payload = data.payload;
+      const code = payload && (payload.workyard_code || payload.error_code);
+      let detail = typeof payload === 'string' ? payload : JSON.stringify(payload);
+      if (code === 500000 || data.status === 500) {
+        detail = `Workyard server error ${code || 500} — usually the photo payload is too large for their API. Try fewer photos. (${detail})`;
+      }
+      throw new Error(`HTTP ${data.status}: ${detail}`);
     }
     const created = data.result || {};
     const newId = created.id || (created.data && created.data.id);
@@ -2032,6 +2411,10 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (document.getElementById('sf-camera').classList.contains('open')) {
       closeSfCamera();
+      return;
+    }
+    if (document.body.classList.contains('nav-open')) {
+      closeMobileNav();
       return;
     }
     closeDrawer();
