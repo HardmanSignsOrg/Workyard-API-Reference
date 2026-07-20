@@ -1509,10 +1509,59 @@ function renderSfField(el, value) {
 /* ------------------------------------------------------- new submission compose */
 
 const SF_PHOTO_MAX_EDGE = 1280;
-// Workyard's smart-form POST blows up (~500000) when embedded photo payloads get
-// large. Empirically ~250KB JSON body is the cliff; keep photo binaries smaller.
-const SF_PHOTO_MAX_BYTES = 90 * 1024;          // per photo target
-const SF_PHOTOS_MAX_TOTAL_BYTES = 200 * 1024;  // all photos combined (decoded)
+// Used only when R2 is NOT configured (embedded data-URL submit path).
+const SF_PHOTO_MAX_BYTES = 90 * 1024;
+const SF_PHOTOS_MAX_TOTAL_BYTES = 200 * 1024;
+// When R2 is on: light resize only so multi-MB photos survive for cloud upload.
+const SF_R2_MAX_EDGE = 2560;
+const SF_R2_MAX_BYTES = 8 * 1024 * 1024;
+
+/** Filled by /api/media/status — when true, photos go to Cloudflare R2 as public HTTPS URLs. */
+let mediaHosting = { enabled: false, public_base_url: null };
+
+function sfPhotoLimits() {
+  if (mediaHosting.enabled) {
+    return { maxEdge: SF_R2_MAX_EDGE, maxBytes: SF_R2_MAX_BYTES, quality: 0.92 };
+  }
+  return { maxEdge: SF_PHOTO_MAX_EDGE, maxBytes: SF_PHOTO_MAX_BYTES, quality: 0.7 };
+}
+
+async function refreshMediaHosting() {
+  try {
+    const resp = await fetch('/api/media/status');
+    mediaHosting = await resp.json();
+  } catch {
+    mediaHosting = { enabled: false };
+  }
+}
+
+async function uploadPhotoToR2(file) {
+  const content = file.content || '';
+  if (/^https?:\/\//i.test(content)) return { ...file, content };
+  const resp = await fetch('/api/media/upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, name: file.name || 'photo.jpg' }),
+  });
+  const data = await resp.json();
+  if (data.error || !data.url) {
+    throw new Error(typeof data.payload === 'string' ? data.payload : JSON.stringify(data.payload || data));
+  }
+  return { name: file.name || data.name || 'photo.jpg', type: file.type || 'image/jpeg', content: data.url };
+}
+
+async function uploadComposePhotosToR2() {
+  for (const el of (sfCompose.elements || [])) {
+    if (el.type !== 'file') continue;
+    const files = sfCompose.values[el.name] || [];
+    const next = [];
+    for (let i = 0; i < files.length; i++) {
+      setComposeStatus(`Uploading photo ${i + 1}/${files.length} to cloud…`, false);
+      next.push(await uploadPhotoToR2(files[i]));
+    }
+    sfCompose.values[el.name] = next;
+  }
+}
 
 let sfCompose = {
   form: null,
@@ -1538,6 +1587,7 @@ async function openSfCompose() {
     return;
   }
   closeDrawer();
+  await refreshMediaHosting();
   let form = sfState.forms[0];
   setComposeStatus('Loading form…', false);
   try {
@@ -1788,18 +1838,20 @@ function dataUrlPayloadBytes(dataUrl) {
   return Math.floor((b64.length * 3) / 4);
 }
 
-function canvasToResizedDataUrl(sourceCanvas, nameHint, maxBytes) {
-  const budget = maxBytes || SF_PHOTO_MAX_BYTES;
+function canvasToResizedDataUrl(sourceCanvas, nameHint, maxBytes, maxEdge) {
+  const limits = sfPhotoLimits();
+  const budget = maxBytes != null ? maxBytes : limits.maxBytes;
+  const edgeCap = maxEdge != null ? maxEdge : limits.maxEdge;
   let width = sourceCanvas.width;
   let height = sourceCanvas.height;
-  let edge = SF_PHOTO_MAX_EDGE;
+  let edge = edgeCap;
   if (width > edge || height > edge) {
     const scale = Math.min(edge / width, edge / height);
     width = Math.round(width * scale);
     height = Math.round(height * scale);
   }
 
-  let quality = 0.7;
+  let quality = limits.quality;
   let content = '';
   for (let attempt = 0; attempt < 14; attempt++) {
     const canvas = document.createElement('canvas');
@@ -1823,7 +1875,7 @@ function canvasToResizedDataUrl(sourceCanvas, nameHint, maxBytes) {
   };
 }
 
-function fileToResizedDataUrl(file, maxBytes) {
+function fileToResizedDataUrl(file, maxBytes, maxEdge) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Failed to read ' + file.name));
@@ -1835,7 +1887,7 @@ function fileToResizedDataUrl(file, maxBytes) {
         canvas.width = img.width; canvas.height = img.height;
         canvas.getContext('2d').drawImage(img, 0, 0);
         const base = (file.name || 'photo.jpg').replace(/\.[^.]+$/, '') + '.jpg';
-        resolve(canvasToResizedDataUrl(canvas, base, maxBytes));
+        resolve(canvasToResizedDataUrl(canvas, base, maxBytes, maxEdge));
       };
       img.src = reader.result;
     };
@@ -1896,10 +1948,11 @@ async function addSfPhotos(fieldName, fileList) {
   if (!incoming.length) return;
   setComposeStatus('Processing photos…', false);
   try {
+    const limits = sfPhotoLimits();
     const converted = [];
     for (const f of incoming) {
       if (!/^image\//i.test(f.type || '') && !/\.(jpe?g|png|gif|webp|heic)$/i.test(f.name || '')) continue;
-      converted.push(await fileToResizedDataUrl(f));
+      converted.push(await fileToResizedDataUrl(f, limits.maxBytes, limits.maxEdge));
     }
     sfCompose.values[fieldName] = current.concat(converted);
     const kb = Math.round(sfPhotoFieldsTotalBytes() / 1024);
@@ -1996,13 +2049,14 @@ async function startSfCameraStream() {
   errEl.style.display = 'none';
   video.style.display = '';
   document.getElementById('sf-cam-native').classList.remove('show');
-  // Keep resolution moderate so shutter stays snappy on phones.
+  // R2 on → higher ideal resolution; R2 off → keep shutter snappy / small embeds.
+  const camEdge = sfPhotoLimits().maxEdge;
   const constraints = {
     audio: false,
     video: {
       facingMode: { ideal: sfCam.facingMode },
-      width: { ideal: SF_PHOTO_MAX_EDGE },
-      height: { ideal: Math.round(SF_PHOTO_MAX_EDGE * 9 / 16) },
+      width: { ideal: camEdge },
+      height: { ideal: Math.round(camEdge * 9 / 16) },
     },
   };
   try {
@@ -2111,7 +2165,8 @@ function captureSfCameraLive() {
   // Grab frame immediately (sync) so the next tap can fire right away.
   const srcW = video.videoWidth;
   const srcH = video.videoHeight;
-  const maxEdge = SF_PHOTO_MAX_EDGE;
+  const limits = sfPhotoLimits();
+  const maxEdge = limits.maxEdge;
   let w = srcW, h = srcH;
   if (w > maxEdge || h > maxEdge) {
     const scale = Math.min(maxEdge / w, maxEdge / h);
@@ -2124,9 +2179,8 @@ function captureSfCameraLive() {
   canvas.getContext('2d').drawImage(video, 0, 0, w, h);
 
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  // Compress off the critical path enough for UX, but keep shutter free:
-  // use a moderate quality first; submit path will recompress under budget.
-  const photo = canvasToResizedDataUrl(canvas, `capture-${stamp}.jpg`, SF_PHOTO_MAX_BYTES);
+  // R2 on: keep high quality for cloud upload. R2 off: submit path recompresses under budget.
+  const photo = canvasToResizedDataUrl(canvas, `capture-${stamp}.jpg`, limits.maxBytes, limits.maxEdge);
   sfCompose.values[sfCam.fieldName] = (sfCompose.values[sfCam.fieldName] || []).concat([photo]);
 
   const flash = document.getElementById('sf-cam-flash');
@@ -2223,18 +2277,29 @@ async function submitSfCompose() {
   }
 
   try {
-    await recompressSfPhotosUnderBudget();
+    if (mediaHosting.enabled) {
+      await uploadComposePhotosToR2();
+    } else {
+      await recompressSfPhotosUnderBudget();
+      const photoKb = Math.round(sfPhotoFieldsTotalBytes() / 1024);
+      if (sfPhotoFieldsTotalBytes() > SF_PHOTOS_MAX_TOTAL_BYTES * 1.15) {
+        setComposeStatus(
+          `Photos still too large for Workyard API (~${photoKb}KB). Configure Cloudflare R2 (see README) or remove some photos.`,
+          true);
+        return;
+      }
+    }
   } catch (e) {
-    setComposeStatus('Could not compress photos: ' + e.message, true);
+    setComposeStatus('Photo upload/compress failed: ' + e.message, true);
     return;
   }
-  const photoKb = Math.round(sfPhotoFieldsTotalBytes() / 1024);
-  if (sfPhotoFieldsTotalBytes() > SF_PHOTOS_MAX_TOTAL_BYTES * 1.15) {
-    setComposeStatus(
-      `Photos still too large for Workyard API (~${photoKb}KB). Remove some and retry.`,
-      true);
-    return;
-  }
+
+  const photoCount = (sfCompose.elements || [])
+    .filter(el => el.type === 'file')
+    .reduce((n, el) => n + ((sfCompose.values[el.name] || []).length), 0);
+  const photoKb = mediaHosting.enabled
+    ? null
+    : Math.round(sfPhotoFieldsTotalBytes() / 1024);
 
   const responseData = {};
   sfCompose.elements.forEach(el => {
@@ -2247,7 +2312,10 @@ async function submitSfCompose() {
     completed_at: Math.floor(Date.now() / 1000),
   };
 
-  if (!confirm(`Submit “${form.title}” to live Workyard?\n~${photoKb}KB of photos will be sent.\nJob/answers will be visible in Workyard immediately.`)) return;
+  const sizeHint = mediaHosting.enabled
+    ? `${photoCount} photo(s) via Cloudflare R2`
+    : `~${photoKb}KB of embedded photos`;
+  if (!confirm(`Submit “${form.title}” to live Workyard?\n${sizeHint}.\nJob/answers will be visible in Workyard immediately.`)) return;
 
   const btn = document.getElementById('sf-compose-submit');
   btn.disabled = true;
@@ -2268,7 +2336,7 @@ async function submitSfCompose() {
       const code = payload && (payload.workyard_code || payload.error_code);
       let detail = typeof payload === 'string' ? payload : JSON.stringify(payload);
       if (code === 500000 || data.status === 500) {
-        detail = `Workyard server error ${code || 500} — usually the photo payload is too large for their API. Try fewer photos. (${detail})`;
+        detail = `Workyard server error ${code || 500} — usually the photo payload is too large for their API. Configure R2 hosting or try fewer photos. (${detail})`;
       }
       throw new Error(`HTTP ${data.status}: ${detail}`);
     }
@@ -2421,6 +2489,7 @@ document.addEventListener('keydown', e => {
 });
 
 initNav();
+refreshMediaHosting();
 showOverview();
 </script>
 </body>
