@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, render_template, request
 
 from client import WorkyardClient, WorkyardError
+from r2_storage import r2_configured, status as r2_status, upload_bytes, upload_data_url
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
@@ -280,6 +281,48 @@ def api_spec():
             })
     endpoints.sort(key=lambda e: (e['path'], e['method']))
     return jsonify({'endpoints': endpoints})
+
+
+@app.route('/api/media/status')
+def api_media_status():
+    """Whether Cloudflare R2 photo hosting is configured."""
+    return jsonify(r2_status())
+
+
+@app.route('/api/media/upload', methods=['POST'])
+def api_media_upload():
+    """Upload one image to R2; returns { url }. Never deletes objects.
+
+    JSON: { "content": "data:image/jpeg;base64,…", "name": "optional.jpg" }
+    or multipart form field "file".
+    """
+    if not r2_configured():
+        return jsonify({
+            'error': True,
+            'status': 503,
+            'payload': 'R2 not configured — set R2_* vars in .env (see README)',
+        }), 503
+    try:
+        if request.files.get('file'):
+            f = request.files['file']
+            raw = f.read()
+            url = upload_bytes(
+                raw,
+                content_type=f.mimetype or 'application/octet-stream',
+                filename=f.filename or '',
+            )
+            return jsonify({'ok': True, 'url': url, 'name': f.filename or 'upload'})
+        req = request.get_json(silent=True) or {}
+        content = req.get('content') or ''
+        name = req.get('name') or 'photo.jpg'
+        if content.startswith('http://') or content.startswith('https://'):
+            return jsonify({'ok': True, 'url': content, 'name': name})
+        url = upload_data_url(content, filename=name)
+        return jsonify({'ok': True, 'url': url, 'name': name})
+    except ValueError as exc:
+        return jsonify({'error': True, 'status': 400, 'payload': str(exc)}), 400
+    except Exception as exc:
+        return jsonify({'error': True, 'status': 500, 'payload': str(exc)}), 500
 
 
 @app.route('/api/write', methods=['POST'])

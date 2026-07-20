@@ -1,4 +1,4 @@
-# Launch the Workyard dashboard (HTTP on :5210 - localhost + Tailscale).
+﻿# Launch the Workyard dashboard (HTTP on :5210 - localhost + Tailscale).
 # Uses WorkOrderHub's .venv when present.
 #
 # Usage:
@@ -22,6 +22,17 @@ $candidates = @(
     'python'
 )
 $python = $candidates | Where-Object { $_ -eq 'python' -or (Test-Path $_) } | Select-Object -First 1
+
+# Ensure R2 deps (boto3) are present in the resolved interpreter.
+$reqFile = Join-Path $here 'requirements.txt'
+& $python -c "import boto3" 2>$null | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Installing requirements (boto3 missing) into $python ..." -ForegroundColor Yellow
+    & $python -m pip install -r $reqFile
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host 'pip install failed - R2 photo uploads will not work until boto3 is available.' -ForegroundColor Red
+    }
+}
 
 function Get-TailscaleExe {
     $paths = @(
@@ -78,7 +89,7 @@ if ($ServeHttps) {
         Write-Host '  Stop Serve later:  tailscale serve reset' -ForegroundColor DarkGray
     }
 } else {
-    Write-Host "Phone:  http://<tailscale-ip>:$port   (or re-run with --serve-https)" -ForegroundColor DarkGray
+    Write-Host ('Phone:  http://<tailscale-ip>:{0}   (or re-run with --serve-https)' -f $port) -ForegroundColor DarkGray
 }
 
 & $python (Join-Path $here 'app.py')

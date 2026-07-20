@@ -17,6 +17,26 @@ WORKYARD_API_TOKEN=<Bearer token from Workyard dashboard -> Integrations -> API 
 WORKYARD_ORG_ID=45770
 ```
 
+### Cloudflare R2 (recommended for multi-photo submits)
+
+Workyard’s public API rejects large embedded photo payloads. Host photos on
+Cloudflare R2 (free tier is enough) and the dashboard will upload each photo,
+then send public HTTPS URLs in the form submission.
+
+See [docs/r2-photo-hosting.md](docs/r2-photo-hosting.md) for the full walkthrough.
+Required `.env` keys when enabled:
+
+```
+R2_ACCOUNT_ID=…
+R2_ACCESS_KEY_ID=…
+R2_SECRET_ACCESS_KEY=…
+R2_BUCKET=workyard-photos
+R2_PUBLIC_BASE_URL=https://pub-….r2.dev
+```
+
+Without R2, the app falls back to compressed data-URLs (~200KB total limit).
+With R2 enabled, capture keeps multi-MB photos (light resize only) and uploads them as public HTTPS URLs.
+
 ## Run the dashboard
 
 ```
@@ -91,8 +111,10 @@ wy.patch('tasks/123', json={'status': 'done'})
 ```
 client.py               WorkyardClient — auth, retries, pagination, resource helpers
 app.py                  Flask dashboard (port 5210, HTTP)
+r2_storage.py           Cloudflare R2 uploads for Smart Form photos
 run-workyard.ps1        Launcher; optional --serve-https (Tailscale Serve)
 templates/dashboard.html
 openapi.json            Workyard OpenAPI spec (reference)
 requirements.txt
+docs/r2-photo-hosting.md
 ```
